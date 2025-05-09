@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:math';
+import 'home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -752,11 +753,8 @@ class _LoginButtonState extends State<LoginButton>
           child: ElevatedButton(
             onPressed: () {
               // Login logic would go here
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Login button pressed'),
-                  duration: Duration(milliseconds: 800),
-                ),
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (_) => const HomeScreen()),
               );
             },
             style: ElevatedButton.styleFrom(
