@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'dart:math';
 import 'home_screen.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -20,6 +22,11 @@ class _LoginScreenState extends State<LoginScreen>
 
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+
+  // Location variables
+  String _currentCity = "";
+  String _currentState = "";
+  bool _isLocationLoading = false;
 
   @override
   void initState() {
@@ -42,6 +49,65 @@ class _LoginScreenState extends State<LoginScreen>
     );
 
     _animationController.forward();
+
+    // Initialize location
+    _determinePosition();
+  }
+
+  // Method to get the current location
+  Future<void> _determinePosition() async {
+    setState(() {
+      _isLocationLoading = true;
+    });
+
+    try {
+      // Check location permissions
+      LocationPermission permission = await Geolocator.checkPermission();
+
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          // Permissions denied, handle this case
+          setState(() {
+            _currentCity = "Location access denied";
+            _isLocationLoading = false;
+          });
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        // Permissions are permanently denied
+        setState(() {
+          _currentCity = "Location permanently denied";
+          _isLocationLoading = false;
+        });
+        return;
+      }
+
+      // Get current position
+      Position position = await Geolocator.getCurrentPosition();
+
+      // Get place details from coordinates
+      List<Placemark> placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+
+      if (placemarks.isNotEmpty) {
+        Placemark place = placemarks.first;
+        setState(() {
+          _currentCity = place.locality ?? "Unknown city";
+          _currentState = place.administrativeArea ?? "Unknown state";
+          _isLocationLoading = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _currentCity = "Unable to determine location";
+        _isLocationLoading = false;
+      });
+    }
   }
 
   @override
@@ -78,26 +144,62 @@ class _LoginScreenState extends State<LoginScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Theme toggle and top bar
+                  // Location display and theme toggle
                   Padding(
                     padding: const EdgeInsets.only(top: 16.0, right: 8.0),
-                    child: Align(
-                      alignment: Alignment.topRight,
-                      child: IconButton(
-                        onPressed: () {
-                          // Toggle theme callback would go here
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Theme toggle clicked'),
-                              duration: Duration(milliseconds: 800),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        // Location display
+                        _isLocationLoading
+                            ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                            : Row(
+                              children: [
+                                Icon(
+                                  Icons.location_on,
+                                  size: 16,
+                                  color:
+                                      isDarkMode
+                                          ? Colors.white70
+                                          : Colors.black54,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  _currentCity.isNotEmpty
+                                      ? "$_currentCity, India"
+                                      : "Location pending",
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color:
+                                        isDarkMode
+                                            ? Colors.white70
+                                            : Colors.black54,
+                                  ),
+                                ),
+                              ],
                             ),
-                          );
-                        },
-                        icon: Icon(
-                          isDarkMode ? Icons.light_mode : Icons.dark_mode,
-                          color: isDarkMode ? Colors.white70 : Colors.black54,
+
+                        // Theme toggle
+                        IconButton(
+                          onPressed: () {
+                            // Toggle theme callback would go here
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Theme toggle clicked'),
+                                duration: Duration(milliseconds: 800),
+                              ),
+                            );
+                          },
+                          icon: Icon(
+                            isDarkMode ? Icons.light_mode : Icons.dark_mode,
+                            color: isDarkMode ? Colors.white70 : Colors.black54,
+                          ),
                         ),
-                      ),
+                      ],
                     ),
                   ),
 
@@ -752,9 +854,15 @@ class _LoginButtonState extends State<LoginButton>
           ),
           child: ElevatedButton(
             onPressed: () {
-              // Login logic would go here
+              // Pass location data and currency setting to HomeScreen
               Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (_) => const HomeScreen()),
+                MaterialPageRoute(
+                  builder:
+                      (_) => const HomeScreen(
+                        useCurrency: 'INR',
+                        country: 'India',
+                      ),
+                ),
               );
             },
             style: ElevatedButton.styleFrom(

@@ -2,9 +2,18 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'property_detail_screen.dart';
 import 'profile_screen.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final String useCurrency;
+  final String country;
+  
+  const HomeScreen({
+    this.useCurrency = 'USD',
+    this.country = 'United States',
+    super.key,
+  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -19,6 +28,9 @@ class _HomeScreenState extends State<HomeScreen>
   List<PropertyListing> _filteredNearbyProperties = [];
   List<PropertyListing> _filteredFeaturedProperties = [];
   bool _isLoading = true;
+  String? _locationError;
+  String _userLocation = "Location access pending";
+  bool _isLocationLoading = false;
 
   // For background particles
   final List<Particle> _particles = [];
@@ -32,16 +44,25 @@ class _HomeScreenState extends State<HomeScreen>
   int _minBedrooms = 0;
   int _minBathrooms = 0;
   List<String> _selectedTypes = [];
+  
+  // Currency symbol based on selection
+  late String _currencySymbol;
 
   @override
   void initState() {
     super.initState();
+    
+    // Set currency symbol
+    _setCurrencySymbol();
 
     // Initialize particles animation controller
     _particleController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 10),
     )..repeat();
+
+    // Get location with proper permissions
+    _getCurrentLocation();
 
     // Load data with a slight delay to show loading state
     _loadData();
@@ -78,17 +99,102 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
+  void _setCurrencySymbol() {
+    // Set the appropriate currency symbol
+    switch (widget.useCurrency) {
+      case 'INR':
+        _currencySymbol = '₹';
+        break;
+      case 'EUR':
+        _currencySymbol = '€';
+        break;
+      case 'GBP':
+        _currencySymbol = '£';
+        break;
+      default:
+        _currencySymbol = '\$';
+    }
+  }
+
+  Future<void> _getCurrentLocation() async {
+    setState(() {
+      _isLocationLoading = true;
+    });
+
+    try {
+      // First check if location services are enabled
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        setState(() {
+          _locationError = 'Location services are disabled.';
+          _isLocationLoading = false;
+        });
+        return;
+      }
+
+      // Check location permissions
+      LocationPermission permission = await Geolocator.checkPermission();
+      
+      // If denied, request permission
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          setState(() {
+            _locationError = 'Location permissions are denied.';
+            _isLocationLoading = false;
+          });
+          return;
+        }
+      }
+      
+      // If permanently denied, show error
+      if (permission == LocationPermission.deniedForever) {
+        setState(() {
+          _locationError = 'Location permissions are permanently denied. Please enable in settings.';
+          _isLocationLoading = false;
+        });
+        return;
+      }
+
+      // Get current position
+      Position position = await Geolocator.getCurrentPosition();
+      
+      // Get place details from coordinates
+      List<Placemark> placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude
+      );
+      
+      if (placemarks.isNotEmpty) {
+        Placemark place = placemarks.first;
+        String city = place.locality ?? "";
+        String state = place.administrativeArea ?? "";
+        String country = place.country ?? "India"; // Default to India
+        
+        setState(() {
+          _userLocation = "$city, $state, $country";
+          _isLocationLoading = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _locationError = 'Error retrieving location: $e';
+        _isLocationLoading = false;
+      });
+    }
+  }
+
   void _loadData() async {
     // Simulate API loading delay
     await Future.delayed(const Duration(milliseconds: 1500));
 
-    // Sample properties data
+    // Sample properties data - updated for Indian market
     final List<PropertyListing> nearby = [
       PropertyListing(
         id: '1',
         title: 'Modern Apartment',
-        address: '123 Urban St, Downtown',
-        price: 350000,
+        address: '123 Urban St, ${widget.country == 'India' ? 'Mumbai' : 'Downtown'}',
+        price: widget.useCurrency == 'INR' ? 3500000 : 350000,
         bedrooms: 2,
         bathrooms: 2,
         sqft: 1200,
@@ -100,8 +206,8 @@ class _HomeScreenState extends State<HomeScreen>
       PropertyListing(
         id: '2',
         title: 'Family Home',
-        address: '456 Maple Ave, Suburbia',
-        price: 525000,
+        address: '456 Maple Ave, ${widget.country == 'India' ? 'Gurugram' : 'Suburbia'}',
+        price: widget.useCurrency == 'INR' ? 5250000 : 525000,
         bedrooms: 4,
         bathrooms: 3,
         sqft: 2400,
@@ -219,46 +325,44 @@ class _HomeScreenState extends State<HomeScreen>
       _selectedTypes = propertyTypes;
 
       // Filter nearby properties
-      _filteredNearbyProperties =
-          _nearbyProperties.where((property) {
-            bool matchesPrice =
-                property.price >= priceRange.start &&
-                property.price <= priceRange.end;
-            bool matchesSize =
-                property.sqft >= sizeRange.start &&
-                property.sqft <= sizeRange.end;
-            bool matchesBedrooms = property.bedrooms >= bedrooms;
-            bool matchesBathrooms = property.bathrooms >= bathrooms;
-            bool matchesType =
-                propertyTypes.isEmpty || propertyTypes.contains(property.type);
+      _filteredNearbyProperties = _nearbyProperties.where((property) {
+        bool matchesPrice =
+            property.price >= priceRange.start &&
+            property.price <= priceRange.end;
+        bool matchesSize =
+            property.sqft >= sizeRange.start &&
+            property.sqft <= sizeRange.end;
+        bool matchesBedrooms = property.bedrooms >= bedrooms;
+        bool matchesBathrooms = property.bathrooms >= bathrooms;
+        bool matchesType =
+            propertyTypes.isEmpty || propertyTypes.contains(property.type);
 
-            return matchesPrice &&
-                matchesSize &&
-                matchesBedrooms &&
-                matchesBathrooms &&
-                matchesType;
-          }).toList();
+        return matchesPrice &&
+            matchesSize &&
+            matchesBedrooms &&
+            matchesBathrooms &&
+            matchesType;
+      }).toList();
 
       // Filter featured properties
-      _filteredFeaturedProperties =
-          _featuredProperties.where((property) {
-            bool matchesPrice =
-                property.price >= priceRange.start &&
-                property.price <= priceRange.end;
-            bool matchesSize =
-                property.sqft >= sizeRange.start &&
-                property.sqft <= sizeRange.end;
-            bool matchesBedrooms = property.bedrooms >= bedrooms;
-            bool matchesBathrooms = property.bathrooms >= bathrooms;
-            bool matchesType =
-                propertyTypes.isEmpty || propertyTypes.contains(property.type);
+      _filteredFeaturedProperties = _featuredProperties.where((property) {
+        bool matchesPrice =
+            property.price >= priceRange.start &&
+            property.price <= priceRange.end;
+        bool matchesSize =
+            property.sqft >= sizeRange.start &&
+            property.sqft <= sizeRange.end;
+        bool matchesBedrooms = property.bedrooms >= bedrooms;
+        bool matchesBathrooms = property.bathrooms >= bathrooms;
+        bool matchesType =
+            propertyTypes.isEmpty || propertyTypes.contains(property.type);
 
-            return matchesPrice &&
-                matchesSize &&
-                matchesBedrooms &&
-                matchesBathrooms &&
-                matchesType;
-          }).toList();
+        return matchesPrice &&
+            matchesSize &&
+            matchesBedrooms &&
+            matchesBathrooms &&
+            matchesType;
+      }).toList();
     });
 
     // Show feedback to the user
@@ -322,10 +426,9 @@ class _HomeScreenState extends State<HomeScreen>
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors:
-                    isDarkMode
-                        ? [const Color(0xFF0A1128), const Color(0xFF001F54)]
-                        : [const Color(0xFFF8F5F2), const Color(0xFFFFFFFF)],
+                colors: isDarkMode
+                    ? [const Color(0xFF0A1128), const Color(0xFF001F54)]
+                    : [const Color(0xFFF8F5F2), const Color(0xFFFFFFFF)],
               ),
             ),
           ),
@@ -468,13 +571,66 @@ class _HomeScreenState extends State<HomeScreen>
 
     return CustomScrollView(
       slivers: [
-        // App Bar with Search
+        // App Bar with Search and Location
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Location display
+                Row(
+                  children: [
+                    Icon(
+                      Icons.location_on,
+                      size: 18,
+                      color: isDarkMode ? Colors.white70 : Colors.black54,
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: _isLocationLoading
+                        ? Row(
+                            children: [
+                              SizedBox(
+                                width: 16, 
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: isDarkMode ? Colors.white70 : Colors.indigo,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                "Getting location...",
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: isDarkMode ? Colors.white70 : Colors.black54,
+                                ),
+                              ),
+                            ],
+                          )
+                        : Text(
+                            _locationError ?? _userLocation,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: _locationError != null
+                                ? Colors.amber
+                                : (isDarkMode ? Colors.white70 : Colors.black54),
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                    ),
+                    if (_locationError != null)
+                      IconButton(
+                        icon: const Icon(Icons.refresh, size: 18),
+                        onPressed: _getCurrentLocation,
+                        color: isDarkMode ? Colors.white70 : Colors.indigo,
+                      ),
+                  ],
+                ),
+                
+                const SizedBox(height: 10),
+
                 // Welcome text
                 Text(
                   'Find your dream home',
@@ -560,8 +716,8 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
 
                 // Active filter indicators
-                if (_selectedTypes.isNotEmpty ||
-                    _minBedrooms > 0 ||
+                if (_selectedTypes.isNotEmpty || 
+                    _minBedrooms > 0 || 
                     _minBathrooms > 0)
                   Container(
                     margin: const EdgeInsets.only(top: 12),
@@ -637,7 +793,6 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ),
           ),
-
           SliverList(
             delegate: SliverChildBuilderDelegate((context, index) {
               final property = _filteredNearbyProperties[index];
@@ -645,6 +800,7 @@ class _HomeScreenState extends State<HomeScreen>
                 property: property,
                 isDarkMode: isDarkMode,
                 onTap: () => _viewPropertyDetails(property),
+                currencySymbol: _currencySymbol,
               );
             }, childCount: _filteredNearbyProperties.length),
           ),
@@ -665,7 +821,6 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ),
           ),
-
           SliverToBoxAdapter(
             child: SizedBox(
               height: 320,
@@ -679,6 +834,7 @@ class _HomeScreenState extends State<HomeScreen>
                     property: property,
                     isDarkMode: isDarkMode,
                     onTap: () => _viewPropertyDetails(property),
+                    currencySymbol: _currencySymbol,
                   );
                 },
               ),
@@ -761,12 +917,11 @@ class _HomeScreenState extends State<HomeScreen>
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color:
-              isSelected
-                  ? (isDarkMode
-                      ? Colors.blueAccent.withOpacity(0.2)
-                      : Colors.indigo.withOpacity(0.1))
-                  : Colors.transparent,
+          color: isSelected
+              ? (isDarkMode
+                  ? Colors.blueAccent.withOpacity(0.2)
+                  : Colors.indigo.withOpacity(0.1))
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
@@ -817,19 +972,17 @@ class _HomeScreenState extends State<HomeScreen>
 
     final lowerQuery = query.toLowerCase();
     setState(() {
-      _filteredNearbyProperties =
-          _nearbyProperties.where((property) {
-            return property.title.toLowerCase().contains(lowerQuery) ||
-                property.address.toLowerCase().contains(lowerQuery) ||
-                property.type.toLowerCase().contains(lowerQuery);
-          }).toList();
+      _filteredNearbyProperties = _nearbyProperties.where((property) {
+        return property.title.toLowerCase().contains(lowerQuery) ||
+            property.address.toLowerCase().contains(lowerQuery) ||
+            property.type.toLowerCase().contains(lowerQuery);
+      }).toList();
 
-      _filteredFeaturedProperties =
-          _featuredProperties.where((property) {
-            return property.title.toLowerCase().contains(lowerQuery) ||
-                property.address.toLowerCase().contains(lowerQuery) ||
-                property.type.toLowerCase().contains(lowerQuery);
-          }).toList();
+      _filteredFeaturedProperties = _featuredProperties.where((property) {
+        return property.title.toLowerCase().contains(lowerQuery) ||
+            property.address.toLowerCase().contains(lowerQuery) ||
+            property.type.toLowerCase().contains(lowerQuery);
+      }).toList();
     });
   }
 
@@ -838,31 +991,31 @@ class _HomeScreenState extends State<HomeScreen>
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder:
-          (context) => FilterBottomSheet(
-            initialPriceRange: _priceRange,
-            initialSizeRange: _sizeRange,
-            initialBedrooms: _minBedrooms,
-            initialBathrooms: _minBathrooms,
-            initialSelectedTypes: _selectedTypes,
-            onApplyFilters: _applyFilters,
-            screenHeight: screenSize.height,
-          ),
+      builder: (context) => FilterBottomSheet(
+        initialPriceRange: _priceRange,
+        initialSizeRange: _sizeRange,
+        initialBedrooms: _minBedrooms,
+        initialBathrooms: _minBathrooms,
+        initialSelectedTypes: _selectedTypes,
+        onApplyFilters: _applyFilters,
+        screenHeight: screenSize.height,
+      ),
     );
   }
 }
 
 // Custom Widgets
-
 class PropertyCard extends StatelessWidget {
   final PropertyListing property;
   final bool isDarkMode;
   final VoidCallback onTap;
+  final String currencySymbol;
 
   const PropertyCard({
     required this.property,
     required this.isDarkMode,
     required this.onTap,
+    this.currencySymbol = '₹',
     super.key,
   });
 
@@ -906,20 +1059,17 @@ class PropertyCard extends StatelessWidget {
                         loadingBuilder: (context, child, loadingProgress) {
                           if (loadingProgress == null) return child;
                           return Container(
-                            color:
-                                isDarkMode
-                                    ? Colors.grey[800]
-                                    : Colors.grey[200],
+                            color: isDarkMode
+                                ? Colors.grey[800]
+                                : Colors.grey[200],
                             child: Center(
                               child: CircularProgressIndicator(
-                                value:
-                                    loadingProgress.expectedTotalBytes != null
-                                        ? loadingProgress
-                                                .cumulativeBytesLoaded /
-                                            loadingProgress.expectedTotalBytes!
-                                        : null,
-                                color:
-                                    isDarkMode ? Colors.white60 : Colors.indigo,
+                                value: loadingProgress.expectedTotalBytes != null
+                                    ? loadingProgress
+                                            .cumulativeBytesLoaded /
+                                        loadingProgress.expectedTotalBytes!
+                                    : null,
+                                color: isDarkMode ? Colors.white60 : Colors.indigo,
                                 strokeWidth: 2,
                               ),
                             ),
@@ -927,10 +1077,9 @@ class PropertyCard extends StatelessWidget {
                         },
                         errorBuilder: (context, error, stackTrace) {
                           return Container(
-                            color:
-                                isDarkMode
-                                    ? Colors.grey[800]
-                                    : Colors.grey[200],
+                            color: isDarkMode
+                                ? Colors.grey[800]
+                                : Colors.grey[200],
                             child: Icon(
                               Icons.broken_image_outlined,
                               color: isDarkMode ? Colors.white60 : Colors.grey,
@@ -953,14 +1102,14 @@ class PropertyCard extends StatelessWidget {
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(
+                              children: const [
+                                Icon(
                                   Icons.view_in_ar,
                                   color: Colors.white,
                                   size: 12,
                                 ),
-                                const SizedBox(width: 4),
-                                const Text(
+                                SizedBox(width: 4),
+                                Text(
                                   'VR',
                                   style: TextStyle(
                                     color: Colors.white,
@@ -1029,7 +1178,7 @@ class PropertyCard extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            '\$${_formatPrice(property.price)}',
+                            '₹${_formatPrice(property.price)}',  // Changed $ to ₹
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
@@ -1055,9 +1204,7 @@ class PropertyCard extends StatelessWidget {
                               'View',
                               style: TextStyle(
                                 color:
-                                    isDarkMode
-                                        ? Colors.blueAccent
-                                        : Colors.indigo,
+                                    isDarkMode ? Colors.blueAccent : Colors.indigo,
                                 fontWeight: FontWeight.w600,
                                 fontSize: 12,
                               ),
@@ -1081,10 +1228,9 @@ class PropertyCard extends StatelessWidget {
       margin: const EdgeInsets.only(right: 8),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color:
-            isDarkMode
-                ? Colors.white.withOpacity(0.1)
-                : Colors.grey.withOpacity(0.1),
+        color: isDarkMode
+            ? Colors.white.withOpacity(0.1)
+            : Colors.grey.withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -1109,8 +1255,11 @@ class PropertyCard extends StatelessWidget {
   }
 
   String _formatPrice(int price) {
-    if (price >= 1000000) {
-      return '${(price / 1000000).toStringAsFixed(price % 1000000 == 0 ? 0 : 1)}M';
+    // Format only for Indian Rupees
+    if (price >= 10000000) {
+      return '${(price / 10000000).toStringAsFixed(price % 10000000 == 0 ? 0 : 2)} Cr';
+    } else if (price >= 100000) {
+      return '${(price / 100000).toStringAsFixed(price % 100000 == 0 ? 0 : 2)} L';
     } else if (price >= 1000) {
       return '${(price / 1000).toStringAsFixed(price % 1000 == 0 ? 0 : 1)}K';
     }
@@ -1122,11 +1271,13 @@ class FeaturedPropertyCard extends StatelessWidget {
   final PropertyListing property;
   final bool isDarkMode;
   final VoidCallback onTap;
+  final String currencySymbol;
 
   const FeaturedPropertyCard({
     required this.property,
     required this.isDarkMode,
     required this.onTap,
+    this.currencySymbol = '₹',
     super.key,
   });
 
@@ -1170,11 +1321,10 @@ class FeaturedPropertyCard extends StatelessWidget {
                       color: isDarkMode ? Colors.grey[800] : Colors.grey[200],
                       child: Center(
                         child: CircularProgressIndicator(
-                          value:
-                              loadingProgress.expectedTotalBytes != null
-                                  ? loadingProgress.cumulativeBytesLoaded /
-                                      loadingProgress.expectedTotalBytes!
-                                  : null,
+                          value: loadingProgress.expectedTotalBytes != null
+                              ? loadingProgress.cumulativeBytesLoaded /
+                                  loadingProgress.expectedTotalBytes!
+                              : null,
                           color: isDarkMode ? Colors.white60 : Colors.indigo,
                           strokeWidth: 2,
                         ),
@@ -1193,7 +1343,6 @@ class FeaturedPropertyCard extends StatelessWidget {
                   },
                 ),
               ),
-
               // Featured badge
               Positioned(
                 top: 12,
@@ -1226,7 +1375,6 @@ class FeaturedPropertyCard extends StatelessWidget {
                   ),
                 ),
               ),
-
               // VR badge
               if (property.hasVirtualTour)
                 Positioned(
@@ -1272,7 +1420,6 @@ class FeaturedPropertyCard extends StatelessWidget {
                 ),
             ],
           ),
-
           // Info section
           Padding(
             padding: const EdgeInsets.all(16.0),
@@ -1304,7 +1451,7 @@ class FeaturedPropertyCard extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      '\$${_formatPrice(property.price)}',
+                      '₹${_formatPrice(property.price)}',  // Changed $ to ₹
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -1321,7 +1468,6 @@ class FeaturedPropertyCard extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 16),
-
                 // Action buttons
                 InkWell(
                   onTap: onTap,
@@ -1331,10 +1477,9 @@ class FeaturedPropertyCard extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors:
-                            isDarkMode
-                                ? [Colors.blueAccent, Colors.indigo]
-                                : [Colors.indigo, Colors.indigo.shade700],
+                        colors: isDarkMode
+                            ? [Colors.blueAccent, Colors.indigo]
+                            : [Colors.indigo, Colors.indigo.shade700],
                       ),
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -1357,8 +1502,11 @@ class FeaturedPropertyCard extends StatelessWidget {
   }
 
   String _formatPrice(int price) {
-    if (price >= 1000000) {
-      return '${(price / 1000000).toStringAsFixed(price % 1000000 == 0 ? 0 : 1)}M';
+    // Format only for Indian Rupees
+    if (price >= 10000000) {
+      return '${(price / 10000000).toStringAsFixed(price % 10000000 == 0 ? 0 : 2)} Cr';
+    } else if (price >= 100000) {
+      return '${(price / 100000).toStringAsFixed(price % 100000 == 0 ? 0 : 2)} L';
     } else if (price >= 1000) {
       return '${(price / 1000).toStringAsFixed(price % 1000 == 0 ? 0 : 1)}K';
     }
@@ -1506,8 +1654,8 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
                             ? Colors.white.withOpacity(0.1)
                             : Colors.grey.shade200,
                     labels: RangeLabels(
-                      '\$${(_priceRange.start / 1000).round()}K',
-                      '\$${(_priceRange.end / 1000).round()}K',
+                      '₹${(_priceRange.start / 1000).round()}K',  // Changed $ to ₹
+                      '₹${(_priceRange.end / 1000).round()}K',    // Changed $ to ₹
                     ),
                     onChanged: (values) {
                       setState(() {
@@ -1521,13 +1669,13 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          '\$${(_priceRange.start / 1000).round()}K',
+                          '₹${(_priceRange.start / 1000).round()}K',  // Changed $ to ₹
                           style: TextStyle(
                             color: isDarkMode ? Colors.white70 : Colors.black54,
                           ),
                         ),
                         Text(
-                          '\$${(_priceRange.end / 1000).round()}K',
+                          '₹${(_priceRange.end / 1000).round()}K',  // Changed $ to ₹
                           style: TextStyle(
                             color: isDarkMode ? Colors.white70 : Colors.black54,
                           ),
@@ -1565,7 +1713,26 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
                       });
                     },
                   ),
-                  // ...existing code...
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          '${_sizeRange.start.round()}',
+                          style: TextStyle(
+                            color: isDarkMode ? Colors.white70 : Colors.black54,
+                          ),
+                        ),
+                        Text(
+                          '${_sizeRange.end.round()}',
+                          style: TextStyle(
+                            color: isDarkMode ? Colors.white70 : Colors.black54,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1670,60 +1837,56 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
               child: Wrap(
                 spacing: 8,
                 runSpacing: 8,
-                children:
-                    _propertyTypes.map((type) {
-                      final isSelected = _selectedTypes.contains(type);
-                      return GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            if (isSelected) {
-                              _selectedTypes.remove(type);
-                            } else {
-                              _selectedTypes.add(type);
-                            }
-                          });
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color:
-                                isSelected
-                                    ? (isDarkMode
-                                        ? Colors.blueAccent.withOpacity(0.3)
-                                        : Colors.indigo.withOpacity(0.1))
-                                    : Colors.transparent,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color:
-                                  isSelected
-                                      ? (isDarkMode
-                                          ? Colors.blueAccent
-                                          : Colors.indigo)
-                                      : (isDarkMode
-                                          ? Colors.white30
-                                          : Colors.grey.shade300),
-                              width: 1,
-                            ),
-                          ),
-                          child: Text(
-                            type,
-                            style: TextStyle(
-                              color:
-                                  isSelected
-                                      ? (isDarkMode
-                                          ? Colors.white
-                                          : Colors.indigo)
-                                      : (isDarkMode
-                                          ? Colors.white70
-                                          : Colors.black54),
-                            ),
-                          ),
+                children: _propertyTypes.map((type) {
+                  final isSelected = _selectedTypes.contains(type);
+                  return GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        if (isSelected) {
+                          _selectedTypes.remove(type);
+                        } else {
+                          _selectedTypes.add(type);
+                        }
+                      });
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? (isDarkMode
+                                ? Colors.blueAccent.withOpacity(0.3)
+                                : Colors.indigo.withOpacity(0.1))
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: isSelected
+                              ? (isDarkMode
+                                  ? Colors.blueAccent
+                                  : Colors.indigo)
+                              : (isDarkMode
+                                  ? Colors.white30
+                                  : Colors.grey.shade300),
+                          width: 1,
                         ),
-                      );
-                    }).toList(),
+                      ),
+                      child: Text(
+                        type,
+                        style: TextStyle(
+                          color: isSelected
+                              ? (isDarkMode
+                                  ? Colors.white
+                                  : Colors.indigo)
+                              : (isDarkMode
+                                  ? Colors.white70
+                                  : Colors.black54),
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
               ),
             ),
 
@@ -1747,24 +1910,22 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor:
                           isDarkMode ? Colors.blueAccent : Colors.indigo,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
                     child: const Text(
                       'Apply Filters',
                       style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 16,
                       ),
                     ),
                   ),
                 ),
               ],
             ),
-
-            const SizedBox(height: 20),
           ],
         ),
       ),
@@ -1797,6 +1958,43 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
   }
 }
 
+class Particle {
+  Offset position;
+  final double size;
+  final double speed;
+  final double angle;
+
+  Particle({
+    required this.position,
+    required this.size,
+    required this.speed,
+    required this.angle,
+  });
+}
+
+class ParticlePainter extends CustomPainter {
+  final List<Particle> particles;
+  final bool isDarkMode;
+
+  ParticlePainter({required this.particles, required this.isDarkMode});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (final particle in particles) {
+      final paint = Paint()
+        ..color = isDarkMode
+            ? Colors.white.withOpacity(0.1 + (particle.size / 5) * 0.15)
+            : Colors.indigo.withOpacity(
+                0.04 + (particle.size / 5) * 0.06,
+              );
+      canvas.drawCircle(particle.position, particle.size, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+}
+
 class PropertyListing {
   final String id;
   final String title;
@@ -1825,49 +2023,8 @@ class PropertyListing {
     required this.isFeatured,
     required this.hasVirtualTour,
     this.type = 'House',
-    this.description =
-        'Beautiful property with modern amenities and convenient location.',
+    this.description = 'Beautiful property with modern amenities and convenient location.',
     this.amenities = const ['Parking', 'Garden', 'Pool'],
     this.additionalImages = const [],
   });
-}
-
-class Particle {
-  Offset position;
-  final double size;
-  final double speed;
-  final double angle;
-
-  Particle({
-    required this.position,
-    required this.size,
-    required this.speed,
-    required this.angle,
-  });
-}
-
-class ParticlePainter extends CustomPainter {
-  final List<Particle> particles;
-  final bool isDarkMode;
-
-  ParticlePainter({required this.particles, required this.isDarkMode});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    for (final particle in particles) {
-      final paint =
-          Paint()
-            ..color =
-                isDarkMode
-                    ? Colors.white.withOpacity(0.1 + (particle.size / 5) * 0.15)
-                    : Colors.indigo.withOpacity(
-                      0.04 + (particle.size / 5) * 0.06,
-                    );
-
-      canvas.drawCircle(particle.position, particle.size, paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
