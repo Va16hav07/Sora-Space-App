@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'login_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -9,7 +10,8 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMixin {
+class _SplashScreenState extends State<SplashScreen>
+    with TickerProviderStateMixin {
   late AnimationController _fadeController;
   late AnimationController _orbitController;
   late AnimationController _transformController;
@@ -17,22 +19,22 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   late Animation<double> _fadeAnimation;
   late Animation<double> _orbitAnimation;
   late Animation<double> _transformAnimation;
-  
+
   // For star particles
   final List<StarParticle> _stars = [];
   final Random _random = Random();
-  
+
   Timer? _navigationTimer;
   bool _disposed = false;
   bool _starsInitialized = false;
-  
+
   @override
   void initState() {
     super.initState();
-    
+
     // Generate stars with default values - will update in didChangeDependencies
     _initializeStars(400, 800); // default width and height
-    
+
     // Text fade-in animation
     _fadeController = AnimationController(
       vsync: this,
@@ -42,7 +44,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
       begin: 0.0,
       end: 1.0,
     ).animate(_fadeController);
-    
+
     // Orbit animation
     _orbitController = AnimationController(
       vsync: this,
@@ -52,7 +54,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
       begin: 0.0,
       end: 2 * pi,
     ).animate(_orbitController);
-    
+
     // Transform animation (orbit to icon)
     _transformController = AnimationController(
       vsync: this,
@@ -62,32 +64,30 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
       begin: 0.0,
       end: 1.0,
     ).animate(_transformController);
-    
+
     // Loading animation
     _loadingController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     )..repeat();
-    
+
     // We need to schedule this after the first frame is drawn
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_disposed) {
         _startAnimationSequence();
-        
+
         // Navigate to login after splash
         _navigationTimer = Timer(const Duration(milliseconds: 2800), () {
           if (!_disposed && mounted && context.mounted) {
             Navigator.of(context).pushReplacement(
-              MaterialPageRoute(
-                builder: (_) => const Placeholder(),
-              ), // Replace with actual login page
+              MaterialPageRoute(builder: (_) => const LoginScreen()),
             );
           }
         });
       }
     });
   }
-  
+
   void _initializeStars(double width, double height) {
     _stars.clear();
     for (int i = 0; i < 50; i++) {
@@ -100,11 +100,11 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
       );
     }
   }
-  
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    
+
     // Safe to use MediaQuery here
     if (!_starsInitialized) {
       final screenSize = MediaQuery.of(context).size;
@@ -115,16 +115,16 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
 
   void _startAnimationSequence() async {
     if (_disposed) return;
-    
+
     await Future.delayed(const Duration(milliseconds: 300));
     if (_disposed) return;
     _fadeController.forward();
-    
+
     await Future.delayed(const Duration(milliseconds: 1000));
     if (_disposed) return;
     _transformController.forward();
   }
-  
+
   @override
   void dispose() {
     _disposed = true;
@@ -140,16 +140,17 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final screenSize = MediaQuery.of(context).size;
-    
+
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: isDarkMode 
-                ? [const Color(0xFF0A1128), const Color(0xFF000000)]
-                : [const Color(0xFFE8F1F2), const Color(0xFFC2D3E2)],
+            colors:
+                isDarkMode
+                    ? [const Color(0xFF0A1128), const Color(0xFF000000)]
+                    : [const Color(0xFFE8F1F2), const Color(0xFFC2D3E2)],
           ),
         ),
         child: Stack(
@@ -160,7 +161,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                 painter: StarPainter(stars: _stars),
                 size: Size(screenSize.width, screenSize.height),
               ),
-              
+
             Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -286,9 +287,9 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                       ],
                     ),
                   ),
-                  
+
                   const SizedBox(height: 30),
-                  
+
                   // Fading text
                   FadeTransition(
                     opacity: _fadeAnimation,
@@ -301,9 +302,10 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                         color: isDarkMode ? Colors.white : Colors.indigo,
                         shadows: [
                           Shadow(
-                            color: isDarkMode
-                                ? Colors.blueAccent.withOpacity(0.5)
-                                : Colors.indigo.withOpacity(0.3),
+                            color:
+                                isDarkMode
+                                    ? Colors.blueAccent.withOpacity(0.5)
+                                    : Colors.indigo.withOpacity(0.3),
                             blurRadius: 10,
                           ),
                         ],
@@ -326,14 +328,15 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                     ShimmerText(
                       controller: _loadingController,
                       text: "Loading...",
-                      baseColor: isDarkMode
-                          ? Colors.white70
-                          : Colors.indigo.withOpacity(0.7),
+                      baseColor:
+                          isDarkMode
+                              ? Colors.white70
+                              : Colors.indigo.withOpacity(0.7),
                       highlightColor: isDarkMode ? Colors.white : Colors.indigo,
                     ),
 
                     const SizedBox(height: 20),
-                    
+
                     // Progress bar - adding animation
                     SizedBox(
                       width: 200,
@@ -345,9 +348,10 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                             valueColor: AlwaysStoppedAnimation(
                               isDarkMode ? Colors.blueAccent : Colors.indigo,
                             ),
-                            backgroundColor: isDarkMode
-                                ? Colors.white.withOpacity(0.1)
-                                : Colors.black.withOpacity(0.1),
+                            backgroundColor:
+                                isDarkMode
+                                    ? Colors.white.withOpacity(0.1)
+                                    : Colors.black.withOpacity(0.1),
                           );
                         },
                       ),
@@ -368,25 +372,25 @@ class StarParticle {
   double x;
   double y;
   double size;
-  
+
   StarParticle({required this.x, required this.y, required this.size});
 }
 
 // Star painter for background
 class StarPainter extends CustomPainter {
   final List<StarParticle> stars;
-  
+
   StarPainter({required this.stars});
-  
+
   @override
   void paint(Canvas canvas, Size size) {
     final Paint paint = Paint()..color = Colors.white;
-    
+
     for (var star in stars) {
       canvas.drawCircle(Offset(star.x, star.y), star.size, paint);
     }
   }
-  
+
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
