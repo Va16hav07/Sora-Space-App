@@ -764,7 +764,7 @@ class _LoginButtonState extends State<LoginButton>
                 borderRadius: BorderRadius.circular(15),
               ),
             ),
-            child: Text(
+            child: const Text(
               'LOGIN',
               style: TextStyle(
                 fontSize: 16,

@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'property_detail_screen.dart';
+import 'profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -355,17 +356,45 @@ class _HomeScreenState extends State<HomeScreen>
             },
           ),
 
-          // Main content
-          SafeArea(
-            child:
-                _isLoading
-                    ? _buildLoadingView(isDarkMode)
-                    : _buildMainContent(isDarkMode, size),
-          ),
+          // Show appropriate screen based on selected tab
+          SafeArea(child: _buildCurrentScreen(isDarkMode, size)),
         ],
       ),
       bottomNavigationBar: _buildBottomNavigationBar(isDarkMode),
     );
+  }
+
+  Widget _buildCurrentScreen(bool isDarkMode, Size size) {
+    switch (_currentIndex) {
+      case 0:
+        // Home tab - main content
+        return _isLoading
+            ? _buildLoadingView(isDarkMode)
+            : _buildMainContent(isDarkMode, size);
+      case 1:
+        // Wishlist tab
+        return const Center(
+          child: Text(
+            'Wishlist Screen Coming Soon',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+        );
+      case 2:
+        // Schedule tab
+        return const Center(
+          child: Text(
+            'Schedule Screen Coming Soon',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+        );
+      case 3:
+        // Profile tab
+        return const ProfileScreen();
+      default:
+        return _isLoading
+            ? _buildLoadingView(isDarkMode)
+            : _buildMainContent(isDarkMode, size);
+    }
   }
 
   Widget _buildLoadingView(bool isDarkMode) {
@@ -705,7 +734,6 @@ class _HomeScreenState extends State<HomeScreen>
               _buildNavItem(1, Icons.favorite_border, 'Wishlist', isDarkMode),
               _buildNavItem(2, Icons.calendar_month, 'Schedule', isDarkMode),
               _buildNavItem(3, Icons.person_outline, 'Profile', isDarkMode),
-              _buildNavItem(4, Icons.settings_outlined, 'Settings', isDarkMode),
             ],
           ),
         ),
